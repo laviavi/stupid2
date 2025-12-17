@@ -1,0 +1,1834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GeoSpatial Studio — Polygon & Point Toolkit v99 (Simplify)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+  <!-- Tailwind via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    html, body, #app { height: 100%; }
+    #map { height: 100%; width: 100%; }
+
+    .glass {
+      background: rgba(255,255,255,0.82);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      box-shadow: 0 6px 18px rgba(20,25,35,0.12);
+      border: 1px solid rgba(16,24,40,0.06);
+    }
+
+    .gm-style .gm-style-iw { padding: 8px !important; font-weight: 600; }
+
+    input[type="file"] { display: none; }
+
+    #resultsList { max-height: 320px; overflow: auto; }
+    #status { min-height: 22px; }
+
+    button { transition: background-color 0.2s ease, transform 0.1s ease; }
+    button:active { transform: scale(0.98); }
+
+    .center-label {
+      background: rgba(255,255,255,0.95);
+      border: 1px solid #6366f1;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #4338ca;
+      white-space: nowrap;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    }
+    
+    /* Prevent context menu on map when editing polygons */
+    #map.editing-polygons {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
+  </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800" id="app">
+  <div class="flex flex-col h-full">
+
+    <!-- Horizontal Toolbar -->
+    <!-- Horizontal Toolbar -->
+    <aside class="bg-white border-b px-5 py-2">
+      <!-- Row 1: Status, Data, and Tools -->
+      <div class="flex items-center gap-4 mb-2">
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-md border shrink-0">
+          <span class="text-xs font-semibold text-slate-500">Status:</span>
+          <div id="status" class="text-xs text-slate-600">Ready</div>
+        </div>
+
+        <section class="flex items-center gap-2 shrink-0 border-l pl-4">
+          <h3 class="text-xs font-semibold text-slate-700 whitespace-nowrap">Data:</h3>
+          <div class="flex items-center gap-2">
+            <div>
+              <input id="polygonFiles" type="file" accept=".geojson,application/geo+json" multiple />
+              <div id="polygonFilesButton" class="flex items-center gap-1.5 px-3 py-1.5 border rounded-md hover:shadow-sm cursor-pointer whitespace-nowrap"
+                   title="Load one or more polygon GeoJSON files">
+                <svg class="w-4 h-4 text-indigo-500" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path d="M12 3v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  <path d="M8 7l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M20 21H4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <span class="text-xs text-slate-700">Load Polygons</span>
+              </div>
+              <div id="polygonFileControls" style="display: none;"></div>
+            </div>
+            <div>
+              <input id="pointFiles" type="file" accept=".geojson,application/geo+json" />
+              <div id="pointFilesButton" class="flex items-center gap-1.5 px-3 py-1.5 border rounded-md hover:shadow-sm cursor-pointer whitespace-nowrap"
+                   title="Load a GeoJSON of points (single file)">
+                <svg class="w-4 h-4 text-emerald-500" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path d="M12 2v20" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/>
+                </svg>
+                <span class="text-xs text-slate-700">Load Points</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="flex items-center gap-2 shrink-0 border-l pl-4">
+          <h3 class="text-xs font-semibold text-slate-700 whitespace-nowrap">Tools:</h3>
+          <div class="flex items-center gap-2">
+            <button id="drawPolygonBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border hover:shadow-sm whitespace-nowrap">
+              <svg class="w-4 h-4 text-indigo-600" viewBox="0 0 24 24" fill="none"><path d="M12 2v20" stroke="currentColor" stroke-width="1.25"/></svg>
+              <span class="text-xs font-medium">Draw</span>
+            </button>
+            <button id="editPolygonsBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border hover:shadow-sm whitespace-nowrap">
+              <svg class="w-4 h-4 text-orange-500" viewBox="0 0 24 24" fill="none"><path d="M12 20v-16" stroke="currentColor" stroke-width="1.25"/></svg>
+              <span class="text-xs font-medium">Edit</span>
+              <div id="editPolygonsIndicator" class="text-xs text-slate-500 ml-1">OFF</div>
+            </button>
+            <button id="movePolygonsBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border hover:shadow-sm whitespace-nowrap">
+              <svg class="w-4 h-4 text-purple-500" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2l3 3-3 3M12 2L9 5l3 3M12 2v8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12 22l3-3-3-3M12 22l-3-3 3-3M12 22v-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 12l3-3 3 3M2 12l3 3 3-3M2 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M22 12l-3-3-3 3M22 12l-3 3-3-3M22 12h-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span class="text-xs font-medium">Move</span>
+              <div id="movePolygonsIndicator" class="text-xs text-slate-500 ml-1">OFF</div>
+            </button>
+            <button id="editPointsBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border hover:shadow-sm whitespace-nowrap">
+              <svg class="w-4 h-4 text-emerald-500" viewBox="0 0 24 24" fill="none"><path d="M12 2v20" stroke="currentColor" stroke-width="1.25"/></svg>
+              <span class="text-xs font-medium">Edit Pts</span>
+              <div id="editPointsIndicator" class="text-xs text-slate-500 ml-1">OFF</div>
+            </button>
+            <button id="toggleCentersBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border hover:shadow-sm whitespace-nowrap">
+              <svg class="w-4 h-4 text-indigo-500" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-width="1.5"/></svg>
+              <span class="text-xs font-medium">Centers</span>
+              <div id="centersIndicator" class="text-xs text-emerald-600 ml-1">ON</div>
+            </button>
+            <button id="simplifyPolygonsBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border hover:shadow-sm whitespace-nowrap">
+              <svg class="w-4 h-4 text-rose-500" viewBox="0 0 24 24" fill="none">
+                <path d="M4 4l4 4M20 4l-4 4M4 20l4-4M20 20l-4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+              <span class="text-xs font-medium">Simplify</span>
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <!-- Row 2: Search, Process, Export -->
+      <div class="flex items-center gap-4">
+        <section class="flex items-center gap-2 shrink-0">
+          <h3 class="text-xs font-semibold text-slate-700 whitespace-nowrap">Search:</h3>
+          <div class="flex items-center gap-2">
+            <input id="searchBox" class="px-3 py-1.5 rounded-md border text-xs w-44" placeholder="Address…" />
+            <button id="searchBtn" class="px-3 py-1.5 rounded-md bg-indigo-600 text-white text-xs whitespace-nowrap">Search</button>
+          </div>
+          <div id="foundAddress" class="text-xs text-slate-500 max-w-xs truncate"></div>
+        </section>
+
+        <section class="flex items-center gap-2 shrink-0 border-l pl-4">
+          <h3 class="text-xs font-semibold text-slate-700 whitespace-nowrap">Process:</h3>
+          <button id="processBtn" class="px-3 py-1.5 rounded-md bg-indigo-600 text-white text-xs font-medium whitespace-nowrap">Process Matches</button>
+        </section>
+
+        <section class="flex items-center gap-2 shrink-0 border-l pl-4 relative">
+          <h3 class="text-xs font-semibold text-slate-700 whitespace-nowrap">Export:</h3>
+          <div class="relative">
+            <button id="exportMenuBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-md border bg-white text-xs hover:shadow-sm whitespace-nowrap">
+              <svg class="w-4 h-4 text-slate-600" viewBox="0 0 24 24" fill="none">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span class="font-medium">Download</span>
+              <svg class="w-3 h-3 text-slate-400" viewBox="0 0 24 24" fill="none">
+                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <div id="exportMenu" class="hidden absolute top-full left-0 mt-1 bg-white border rounded-lg shadow-lg py-1 w-48 z-50">
+              <button id="downloadPolygonCSV" class="w-full text-left px-4 py-2 text-xs hover:bg-slate-50 flex items-center gap-2">
+                <span class="text-slate-600">📊</span> Polygons CSV
+              </button>
+              <button id="downloadPointCSV" class="w-full text-left px-4 py-2 text-xs hover:bg-slate-50 flex items-center gap-2">
+                <span class="text-slate-600">📍</span> Points CSV
+              </button>
+              <div class="border-t my-1"></div>
+              <button id="downloadPolygonWKT" class="w-full text-left px-4 py-2 text-xs hover:bg-slate-50 flex items-center gap-2">
+                <span class="text-slate-600">🗺️</span> WKT (QGIS)
+              </button>
+              <button id="downloadPolygonGeoJSON" class="w-full text-left px-4 py-2 text-xs hover:bg-slate-50 flex items-center gap-2">
+                <span class="text-slate-600">🌐</span> GeoJSON
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <div class="ml-auto text-xs text-slate-500 shrink-0 flex items-center gap-2">
+          <span>Area in sq ft</span>
+          <span>•</span>
+          <span>Centers show lat/long</span>
+        </div>
+      </div>
+    </aside>
+    <!-- MAP + RESULTS -->
+    <main class="flex-1 relative">
+
+      <!-- Right-click context menu -->
+      <div id="contextMenu" class="absolute z-50 bg-white border rounded-lg shadow-lg py-1 w-40 text-sm hidden">
+        <div id="contextAddPoint" class="px-3 py-2 cursor-pointer hover:bg-slate-100">Add point here</div>
+      </div>
+
+      <!-- Simplify Polygons Modal -->
+      <div id="simplifyModal" class="absolute inset-0 z-50 hidden flex items-center justify-center" style="background: rgba(0,0,0,0.4);">
+        <div class="bg-white rounded-lg shadow-xl w-96 p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-slate-800">Simplify Polygons</h3>
+            <button id="simplifyModalClose" class="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+          </div>
+
+          <div class="mb-4">
+            <div id="simplifyStats" class="text-sm text-slate-600 mb-3 p-2 bg-slate-50 rounded">
+              <!-- Stats will be populated dynamically -->
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-slate-700 mb-2">Algorithm</label>
+            <div class="flex gap-2">
+              <button id="algoRDP" class="flex-1 px-3 py-2 rounded-md border-2 border-indigo-500 bg-indigo-50 text-indigo-700 text-sm font-medium">
+                Douglas-Peucker
+              </button>
+              <button id="algoVW" class="flex-1 px-3 py-2 rounded-md border-2 border-slate-200 bg-white text-slate-600 text-sm font-medium">
+                Visvalingam-Whyatt
+              </button>
+            </div>
+            <div id="algoDescription" class="mt-2 text-xs text-slate-500">
+              Removes points based on perpendicular distance from line segments. Good for preserving sharp corners.
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-slate-700 mb-2">
+              Tolerance: <span id="toleranceValue" class="text-indigo-600">0.00005</span>
+            </label>
+            <input id="toleranceSlider" type="range" min="1" max="100" value="25" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+            <div class="flex justify-between text-xs text-slate-400 mt-1">
+              <span>Less simplification</span>
+              <span>More simplification</span>
+            </div>
+          </div>
+
+          <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
+            <div class="text-sm text-amber-800">
+              <strong>Preview:</strong> <span id="simplifyPreview">Estimated points after: calculating...</span>
+            </div>
+          </div>
+
+          <div class="flex gap-2">
+            <button id="simplifyCancel" class="flex-1 px-4 py-2 rounded-md border text-slate-600 hover:bg-slate-50">
+              Cancel
+            </button>
+            <button id="simplifyApply" class="flex-1 px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 font-medium">
+              Apply
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="map" class="absolute inset-0"></div>
+
+      <!-- Floating results panel -->
+      <div id="resultsWindow" class="absolute right-6 top-20 w-96 glass rounded-lg p-4 z-40">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-sm font-semibold">Results</div>
+          <div class="flex items-center gap-2">
+            <button id="toggleResultsBtn" class="px-2 py-1 text-xs rounded hover:bg-slate-100">Hide</button>
+            <button id="closeResults" class="px-2 py-1 text-xs rounded hover:bg-slate-100">✕</button>
+          </div>
+        </div>
+
+        <div id="resultsDiv" class="text-sm text-slate-700">
+          <div id="resultsList" class="space-y-2">
+            <div class="text-xs text-slate-400">No results yet — click Process to analyze points vs polygons.</div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- libs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB1rdKP9Y6qZVzkXaOyfL5sU2QmqjHMzvw&libraries=geometry,places,drawing"></script>
+
+  <script>
+    /* ============= START OF JS FIX ============= */
+
+    let map, polygons = [], points = [], movedPoints = new Set();
+    let editingPolygons = false, editingPoints = false;
+    let movingPolygons = false;
+    let geocoder, searchMarker, drawingManager;
+    let drawingMode = false;
+    let suppressAreaTooltip = false;
+    let contextMenu, contextLatLng;
+    let markerTooltip;
+    let showCenterPoints = true;
+
+    // Polygon moving state
+    let draggedPolygon = null;
+    let dragStartLatLng = null;
+    let dragOriginalPath = null;
+
+    let lastGeocodeTime = 0;
+    const throttleMs = 250;
+    const reverseCache = new Map();
+
+    // Multi-file layer registry
+    // fileLayers: { fileId: { polygons: [...], bounds: LatLngBounds, fileName } }
+    const polygonFileLayers = {};
+
+    // Counters to guarantee unique IDs across loads
+    let nextPolygonId = 1;
+    let nextFileLayerId = 1;
+
+    /* -----------------------------------
+       Utility: polygon area (sq ft)
+    ----------------------------------- */
+    function calculatePolygonArea(polygon) {
+      const path = polygon.getPath().getArray().map(c => [c.lng(), c.lat()]);
+      if (path.length < 3) return 0;
+      const ring = [...path];
+      ring.push([ring[0][0], ring[0][1]]);
+      const turfPoly = turf.polygon([ring]);
+      const areaSqMeters = turf.area(turfPoly);
+      return Math.round(areaSqMeters * 10.7639);
+    }
+
+    function formatAreaDisplay(areaNumber) {
+      if (!areaNumber && areaNumber !== 0) return "0";
+      return (areaNumber >= 10000) ? areaNumber.toLocaleString('en-US') : String(areaNumber);
+    }
+
+    /* -----------------------------------
+       Center marker helpers
+    ----------------------------------- */
+    function calculateAndShowCenter(polygon) {
+      const path = polygon.getPath().getArray().map(c => [c.lng(), c.lat()]);
+      if (path.length < 3) return;
+
+      const ring = [...path];
+      ring.push([ring[0][0], ring[0][1]]);
+      const turfPoly = turf.polygon([ring]);
+      const centroid = turf.centerOfMass(turfPoly);
+      const [lng, lat] = centroid.geometry.coordinates;
+
+      polygon.meta.centerLat = lat;
+      polygon.meta.centerLng = lng;
+
+      if (polygon._centerMarker) {
+        polygon._centerMarker.setPosition({ lat, lng });
+      } else {
+        const marker = new google.maps.Marker({
+          position: { lat, lng },
+          map: showCenterPoints ? map : null,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 4,
+            fillColor: '#6366f1',
+            fillOpacity: 1,
+            strokeColor: '#6366f1',
+            strokeWeight: 0
+          },
+          zIndex: 1000
+        });
+        polygon._centerMarker = marker;
+      }
+    }
+
+    function removeCenterMarker(polygon) {
+      if (polygon._centerMarker) {
+        polygon._centerMarker.setMap(null);
+        polygon._centerMarker = null;
+      }
+    }
+
+    function toggleCenterPoints() {
+      showCenterPoints = !showCenterPoints;
+      polygons.forEach(p => {
+        if (p._centerMarker) {
+          p._centerMarker.setMap(showCenterPoints ? map : null);
+        }
+      });
+      const ind = document.getElementById("centersIndicator");
+      ind.textContent = showCenterPoints ? "ON" : "OFF";
+      ind.classList.toggle("text-emerald-600", showCenterPoints);
+      ind.classList.toggle("text-slate-500", !showCenterPoints);
+    }
+
+    /* -----------------------------------
+       Reverse Geocoding (throttled + cached)
+    ----------------------------------- */
+    function reverseGeocodeWithThrottle(latlng, callback) {
+      const key = latlng.lat().toFixed(6) + "," + latlng.lng().toFixed(6);
+      if (reverseCache.has(key)) { callback(reverseCache.get(key)); return; }
+
+      const now = Date.now();
+      const wait = Math.max(0, throttleMs - (now - lastGeocodeTime));
+      const perform = () => {
+        geocoder.geocode({ location: latlng }, (results, status) => {
+          let address = "Address not found";
+          if (status === "OK" && results?.[0]) address = results[0].formatted_address;
+          reverseCache.set(key, address);
+          lastGeocodeTime = Date.now();
+          callback(address);
+        });
+      };
+
+      if (wait > 0) setTimeout(perform, wait); else perform();
+    }
+
+    /* -----------------------------------
+       Point tooltip handling (sticky tooltip)
+    ----------------------------------- */
+    let tooltipCounter = 0;
+    const tooltipCopyData = new Map();
+    let tooltipCloseTimer = null;
+    let isMouseOverTooltip = false;
+
+    function setupTooltipHoverListeners() {
+      // Listen for domready to attach hover listeners to the InfoWindow content
+      google.maps.event.addListener(markerTooltip, 'domready', () => {
+        // Get the InfoWindow container - traverse up from content to the gm-style-iw container
+        const iwOuter = document.querySelector('.gm-style-iw-a');
+        if (iwOuter) {
+          // Find the parent container that includes the close button and tail
+          const iwContainer = iwOuter.parentElement;
+          if (iwContainer) {
+            iwContainer.addEventListener('mouseenter', () => {
+              isMouseOverTooltip = true;
+              if (tooltipCloseTimer) { clearTimeout(tooltipCloseTimer); tooltipCloseTimer = null; }
+            });
+            iwContainer.addEventListener('mouseleave', () => {
+              isMouseOverTooltip = false;
+              scheduleTooltipClose();
+            });
+          }
+        }
+      });
+    }
+
+    function scheduleTooltipClose() {
+      if (tooltipCloseTimer) { clearTimeout(tooltipCloseTimer); }
+      tooltipCloseTimer = setTimeout(() => {
+        if (!isMouseOverTooltip) {
+          try { markerTooltip.close(); } catch(_) {}
+        }
+      }, 300);
+    }
+
+    function attachPointTooltip(marker) {
+      marker.addListener("dragstart", () => { 
+        isMouseOverTooltip = false;
+        if (tooltipCloseTimer) { clearTimeout(tooltipCloseTimer); tooltipCloseTimer = null; }
+        try { markerTooltip.close(); } catch(_) {} 
+      });
+
+      marker.addListener("mouseover", () => {
+        if (tooltipCloseTimer) { clearTimeout(tooltipCloseTimer); tooltipCloseTimer = null; }
+        const pos = marker.getPosition();
+        const lat = pos.lat().toFixed(6);
+        const lng = pos.lng().toFixed(6);
+        const uid = ++tooltipCounter;
+
+        markerTooltip.setContent(`
+          <div style="font-size:13px;min-width:220px;padding:4px;">
+            <div style="font-weight:500;">${lat}, ${lng}</div>
+            <div style="margin-top:4px;font-style:italic;color:#666;">Loading address…</div>
+          </div>
+        `);
+        markerTooltip.open(map, marker);
+
+        reverseGeocodeWithThrottle(pos, (address) => {
+          const coords = `${lat}, ${lng}`;
+          tooltipCopyData.set(uid, coords + "\n" + address);
+          markerTooltip.setContent(`
+            <div style="font-size:13px;max-width:280px;padding:4px;">
+              <div style="font-weight:600;color:#1e40af;user-select:all;cursor:text;">${lat}, ${lng}</div>
+              <div style="margin-top:6px;user-select:all;cursor:text;line-height:1.4;">${address}</div>
+              <div style="margin-top:10px;display:flex;gap:6px;justify-content:flex-end;">
+                <button onclick="navigator.clipboard.writeText('${lat}, ${lng}');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy Coords',1000)"
+                  style="font-size:11px;padding:4px 10px;background:#e0e7ff;border-radius:4px;cursor:pointer;border:1px solid #c7d2fe;">
+                  Copy Coords
+                </button>
+                <button onclick="navigator.clipboard.writeText(tooltipCopyData.get(${uid}));this.textContent='Copied!';setTimeout(()=>this.textContent='Copy All',1000)"
+                  style="font-size:11px;padding:4px 10px;background:#6366f1;color:white;border-radius:4px;cursor:pointer;border:none;">
+                  Copy All
+                </button>
+              </div>
+              <div style="margin-top:6px;font-size:10px;color:#94a3b8;text-align:center;">Hover here to keep open</div>
+            </div>
+          `);
+        });
+      });
+
+      marker.addListener("mouseout", () => {
+        scheduleTooltipClose();
+      });
+    }
+
+    /* -----------------------------------
+       Area Tooltip for polygons
+    ----------------------------------- */
+    function attachAreaTooltip(polygon) {
+      const infowindow = new google.maps.InfoWindow({ disableAutoPan: true });
+      polygon._areaInfoWindow = infowindow;
+
+      google.maps.event.addListener(polygon, "mouseover", (e) => {
+        if (suppressAreaTooltip) return;
+        const area = polygon.meta.areaSqFt ?? calculatePolygonArea(polygon);
+        infowindow.setContent(`<div style="font-weight:600">Area: ${formatAreaDisplay(area)} sqft</div>`);
+        infowindow.setPosition(e.latLng);
+        infowindow.open(map);
+      });
+
+      google.maps.event.addListener(polygon, "mouseout", () => { infowindow.close(); });
+
+      // update area and center when edited
+      const path = polygon.getPath();
+      google.maps.event.addListener(path, "set_at", () => { polygon.meta.areaSqFt = calculatePolygonArea(polygon); calculateAndShowCenter(polygon); });
+      google.maps.event.addListener(path, "insert_at", () => { polygon.meta.areaSqFt = calculatePolygonArea(polygon); calculateAndShowCenter(polygon); });
+      google.maps.event.addListener(path, "remove_at", () => { polygon.meta.areaSqFt = calculatePolygonArea(polygon); calculateAndShowCenter(polygon); });
+    }
+
+    /* -----------------------------------
+       Map initialization
+    ----------------------------------- */
+    function initMap() {
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 33.9, lng: -117.2 },
+        zoom: 10,
+        gestureHandling: 'greedy',
+        streetViewControl: false,
+        mapTypeControl: false
+      });
+
+      // Create address search control on map
+      const searchControl = document.createElement('div');
+      searchControl.style.cssText = 'background: white; padding: 8px; margin: 10px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); display: flex; gap: 4px; align-items: center;';
+      
+      const mapSearchInput = document.createElement('input');
+      mapSearchInput.type = 'text';
+      mapSearchInput.placeholder = 'Search address...';
+      mapSearchInput.style.cssText = 'border: 1px solid #ddd; padding: 6px 10px; font-size: 13px; border-radius: 4px; width: 250px; outline: none;';
+      
+      const mapSearchBtn = document.createElement('button');
+      mapSearchBtn.textContent = 'Go';
+      mapSearchBtn.style.cssText = 'background: #4f46e5; color: white; border: none; padding: 6px 16px; font-size: 13px; border-radius: 4px; cursor: pointer; font-weight: 500;';
+      
+      searchControl.appendChild(mapSearchInput);
+      searchControl.appendChild(mapSearchBtn);
+      
+      map.controls[google.maps.ControlPosition.TOP_LEFT].push(searchControl);
+      
+      // Wire up the map search button
+      const performMapSearch = () => {
+        const address = mapSearchInput.value.trim();
+        if (!address) return;
+        
+        geocoder.geocode({ address }, (results, status) => {
+          if (status === "OK" && results && results[0]) {
+            const loc = results[0].geometry.location;
+            map.setCenter(loc);
+            map.setZoom(18);
+            if (searchMarker) searchMarker.setMap(null);
+            searchMarker = new google.maps.Marker({ position: loc, map, icon: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png" });
+            document.getElementById("searchBox").value = address;
+            document.getElementById("foundAddress").textContent = results[0].formatted_address;
+          } else {
+            alert("Address not found. Try a different search term.");
+          }
+        });
+      };
+      
+      mapSearchBtn.onclick = performMapSearch;
+      mapSearchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') performMapSearch();
+      });
+
+
+      contextMenu = document.getElementById("contextMenu");
+      geocoder = new google.maps.Geocoder();
+      markerTooltip = new google.maps.InfoWindow({ disableAutoPan: true });
+      setupTooltipHoverListeners();
+      setupPolygonDragOnMap();
+
+      // Keyboard listener for Escape key and arrow keys for moving polygons
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          // Close simplify modal if open
+          const modal = document.getElementById("simplifyModal");
+          if (!modal.classList.contains("hidden")) {
+            closeSimplifyModal();
+          }
+          // Turn off move polygons mode
+          else if (movingPolygons) {
+            // Clear any active dragging state
+            if (draggedPolygon) {
+              draggedPolygon = null;
+              dragStartLatLng = null;
+              dragOriginalPath = null;
+              map.setOptions({ draggable: true }); // Re-enable map panning
+            }
+            togglePolygonMoving();
+          }
+          // Also turn off edit polygons mode
+          else if (editingPolygons) {
+            togglePolygonEditing();
+          }
+          // Also turn off edit points mode
+          else if (editingPoints) {
+            togglePointEditing();
+          }
+          // Also turn off drawing mode
+          else if (drawingMode) {
+            toggleDrawPolygon();
+          }
+        }
+        
+        // Arrow key movement for polygons when move mode is active
+        if (movingPolygons && polygons.length > 0) {
+          let latDiff = 0;
+          let lngDiff = 0;
+          const moveStep = 0.00001; // Fine movement step (approximately 1 meter)
+          
+          if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            latDiff = moveStep;
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            latDiff = -moveStep;
+          } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            lngDiff = -moveStep;
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            lngDiff = moveStep;
+          }
+          
+          if (latDiff !== 0 || lngDiff !== 0) {
+            // Move all polygons
+            polygons.forEach(polygon => {
+              const path = polygon.getPath();
+              const newPath = [];
+              
+              for (let i = 0; i < path.getLength(); i++) {
+                const pt = path.getAt(i);
+                newPath.push(new google.maps.LatLng(pt.lat() + latDiff, pt.lng() + lngDiff));
+              }
+              
+              polygon.setPath(newPath);
+              
+              // Update center marker position
+              if (polygon._centerMarker) {
+                const pos = polygon._centerMarker.getPosition();
+                polygon._centerMarker.setPosition({
+                  lat: pos.lat() + latDiff,
+                  lng: pos.lng() + lngDiff
+                });
+              }
+              
+              // Update polygon metadata
+              polygon.meta.areaSqFt = calculatePolygonArea(polygon);
+              polygon.meta.centerLat += latDiff;
+              polygon.meta.centerLng += lngDiff;
+            });
+          }
+        }
+      });
+
+      map.addListener("rightclick", (e) => {
+        // Don't show context menu if in polygon edit mode (allow vertex deletion instead)
+        if (editingPolygons) return;
+        
+        contextLatLng = e.latLng;
+        const projection = map.getProjection();
+        if (!projection) return;
+        const scale = Math.pow(2, map.getZoom());
+        const bounds = map.getBounds();
+        if (!bounds) return;
+        const nw = new google.maps.LatLng(bounds.getNorthEast().lat(), bounds.getSouthWest().lng());
+        const worldNW = projection.fromLatLngToPoint(nw);
+        const worldCoord = projection.fromLatLngToPoint(contextLatLng);
+        const pixelX = Math.floor((worldCoord.x - worldNW.x) * scale);
+        const pixelY = Math.floor((worldCoord.y - worldNW.y) * scale);
+        contextMenu.style.left = pixelX + "px";
+        contextMenu.style.top = pixelY + "px";
+        contextMenu.classList.remove("hidden");
+      });
+
+      map.addListener("click", () => { contextMenu.classList.add("hidden"); });
+
+      // Prevent native browser context menu when in polygon edit mode
+      document.addEventListener("contextmenu", (e) => {
+        if (editingPolygons) {
+          // Check if the target is part of the map
+          const mapDiv = document.getElementById("map");
+          if (mapDiv && mapDiv.contains(e.target)) {
+            e.preventDefault();
+            return false;
+          }
+        }
+      });
+
+      document.getElementById("contextAddPoint").onclick = () => {
+        if (!contextLatLng) return;
+        const marker = new google.maps.Marker({
+          position: contextLatLng,
+          map,
+          draggable: editingPoints,
+          icon: getMarkerIcon("original")
+        });
+
+        marker.meta = {
+          id: points.length + 1,
+          original: { lat: contextLatLng.lat(), lng: contextLatLng.lng() },
+          moved: false
+        };
+
+        marker.addListener("dragend", () => { marker.meta.moved = true; marker.setIcon(getMarkerIcon("moved")); });
+        attachPointTooltip(marker);
+        points.push(marker);
+        contextMenu.classList.add("hidden");
+      };
+
+      /* Bind UI actions */
+      document.getElementById("drawPolygonBtn").onclick = toggleDrawPolygon;
+      document.getElementById("editPolygonsBtn").onclick = togglePolygonEditing;
+      document.getElementById("movePolygonsBtn").onclick = togglePolygonMoving;
+      document.getElementById("editPointsBtn").onclick = togglePointEditing;
+      document.getElementById("toggleCentersBtn").onclick = toggleCenterPoints;
+      document.getElementById("processBtn").onclick = processData;
+      document.getElementById("toggleResultsBtn").onclick = toggleResultsWindow;
+      document.getElementById("closeResults").onclick = () => { document.getElementById("resultsWindow").style.display = "none"; };
+      document.getElementById("downloadPolygonCSV").onclick = function() { exportPolygonCSV(); if (polygons.length > 0) buttonClickFeedback(this, "Export Polygons CSV"); };
+      document.getElementById("downloadPointCSV").onclick = function() { exportPointCSV(); if (points.length > 0) buttonClickFeedback(this, "Export Points CSV"); };
+      document.getElementById("downloadPolygonWKT").onclick = function() { exportPolygonWKTCSV(); if (polygons.length > 0) buttonClickFeedback(this, "Export WKT (QGIS)"); };
+      document.getElementById("downloadPolygonGeoJSON").onclick = function() { exportPolygonGeoJSON(); if (polygons.length > 0) buttonClickFeedback(this, "Export GeoJSON"); };
+      document.getElementById("searchBtn").onclick = searchLocation;
+
+      // Polygon files UI wiring
+      const polygonFilesInput = document.getElementById("polygonFiles");
+      const polygonFilesButton = document.getElementById("polygonFilesButton");
+      polygonFilesButton.addEventListener("click", () => polygonFilesInput.click());
+      polygonFilesInput.addEventListener("change", function(e) {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        handleMultiplePolygonFiles(files);
+        // allow same files to be selected again later by clearing value after scheduling processing
+        // we'll reset per file after it is read to avoid race conditions
+      });
+
+      // Points file input wiring
+      const pointFilesInput = document.getElementById("pointFiles");
+      const pointFilesButton = document.getElementById("pointFilesButton");
+      pointFilesButton.addEventListener("click", () => pointFilesInput.click());
+      pointFilesInput.addEventListener("change", function(e) {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        // single file expected for points; take first
+        readPointFile(files[0]);
+        // reset so user can re-load the same file later
+        pointFilesInput.value = '';
+      });
+
+      initDrawingManager();
+      initSimplifyModal();
+    }
+
+    /* -----------------------------------
+       Drawing Manager
+    ----------------------------------- */
+    function initDrawingManager() {
+      drawingManager = new google.maps.drawing.DrawingManager({
+        drawingMode: null,
+        drawingControl: false,
+        polygonOptions: {
+          fillColor: '#3b82f6',
+          fillOpacity: 0.18,
+          strokeWeight: 2,
+          strokeColor: '#3b82f6',
+          editable: true
+        }
+      });
+      drawingManager.setMap(map);
+
+      google.maps.event.addListener(drawingManager, 'overlaycomplete', function(event) {
+        if (event.type !== google.maps.drawing.OverlayType.POLYGON) return;
+        const polygon = event.overlay;
+        polygon.meta = { id: nextPolygonId++ };
+        polygon.setEditable(editingPolygons);
+        polygon.meta.areaSqFt = calculatePolygonArea(polygon);
+        attachAreaTooltip(polygon);
+        calculateAndShowCenter(polygon);
+        attachPolygonDragListeners(polygon);
+        attachPolygonVertexDeleteListener(polygon);
+        polygons.push(polygon);
+        drawingManager.setDrawingMode(null);
+        drawingMode = false;
+        document.getElementById("drawPolygonBtn").classList.remove("bg-indigo-100");
+      });
+    }
+
+    function toggleDrawPolygon() {
+      drawingMode = !drawingMode;
+      drawingManager.setDrawingMode(drawingMode ? google.maps.drawing.OverlayType.POLYGON : null);
+      document.getElementById("drawPolygonBtn").classList.toggle("bg-indigo-100", drawingMode);
+    }
+
+    /* -----------------------------------
+       Read points file
+    ----------------------------------- */
+    function readPointFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const geojson = JSON.parse(e.target.result);
+          drawPoints(geojson);
+        } catch (err) {
+          alert("Invalid Points GeoJSON file: " + file.name);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    /* -----------------------------------
+       Multi-polygon support (Google Maps)
+    ----------------------------------- */
+    function createPolygonsFromGeoJSON(geojson) {
+      const localPolygons = [];
+      if (!geojson || !geojson.features) return localPolygons;
+
+      geojson.features.forEach((feature) => {
+        if (!feature.geometry) return;
+        // support Polygon and MultiPolygon
+        if (feature.geometry.type === "Polygon") {
+          const rings = feature.geometry.coordinates;
+          // outer ring (take first)
+          const coords = rings[0].map(c => ({ lat: c[1], lng: c[0] }));
+          if (coords.length < 3) return;
+
+          const polygon = new google.maps.Polygon({
+            paths: coords,
+            map,
+            strokeColor: "#3b82f6",
+            strokeWeight: 2,
+            fillColor: "#3b82f6",
+            fillOpacity: 0.18,
+            editable: editingPolygons
+          });
+
+          polygon.meta = { id: nextPolygonId++ };
+          polygon.meta.areaSqFt = calculatePolygonArea(polygon);
+          attachAreaTooltip(polygon);
+          calculateAndShowCenter(polygon);
+          attachPolygonDragListeners(polygon);
+          attachPolygonVertexDeleteListener(polygon);
+          localPolygons.push(polygon);
+        } else if (feature.geometry.type === "MultiPolygon") {
+          // each polygon in the MultiPolygon becomes a separate polygon layer
+          feature.geometry.coordinates.forEach((polyCoords) => {
+            if (!polyCoords || !polyCoords[0]) return;
+            const coords = polyCoords[0].map(c => ({ lat: c[1], lng: c[0] }));
+            if (coords.length < 3) return;
+
+            const polygon = new google.maps.Polygon({
+              paths: coords,
+              map,
+              strokeColor: "#3b82f6",
+              strokeWeight: 2,
+              fillColor: "#3b82f6",
+              fillOpacity: 0.18,
+              editable: editingPolygons
+            });
+
+            polygon.meta = { id: nextPolygonId++ };
+            polygon.meta.areaSqFt = calculatePolygonArea(polygon);
+            attachAreaTooltip(polygon);
+            calculateAndShowCenter(polygon);
+            attachPolygonDragListeners(polygon);
+            attachPolygonVertexDeleteListener(polygon);
+            localPolygons.push(polygon);
+          });
+        }
+      });
+
+      return localPolygons;
+    }
+
+    function handleMultiplePolygonFiles(files) {
+      const input = document.getElementById("polygonFiles");
+      for (let i = 0; i < files.length; i++) {
+        (function(file, idx) {
+          const fileLayerId = "file_" + (nextFileLayerId++);
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            let geojson;
+            try {
+              geojson = JSON.parse(e.target.result);
+            } catch (err) {
+              alert("Could not parse GeoJSON in file: " + file.name);
+              // Reset this file input slot so the user can re-select same file later
+              input.value = '';
+              return;
+            }
+
+            if (!geojson || !geojson.features || !geojson.features.length) {
+              alert("No features in: " + file.name);
+              input.value = '';
+              return;
+            }
+
+            const newPolygons = createPolygonsFromGeoJSON(geojson);
+            if (!newPolygons.length) {
+              alert("No Polygon features in: " + file.name);
+              input.value = '';
+              return;
+            }
+
+            // compute bounds for the new polygons
+            const bounds = new google.maps.LatLngBounds();
+            newPolygons.forEach(p => {
+              // extend bounds safely
+              p.getPath().getArray().forEach(pt => bounds.extend(pt));
+              polygons.push(p); // add to main registry
+            });
+
+            polygonFileLayers[fileLayerId] = { polygons: newPolygons, bounds, fileName: file.name };
+            try { map.fitBounds(bounds); } catch(_) {}
+            addPolygonFileControl(fileLayerId, file.name);
+
+            // Reset file input so same file can be chosen again if needed
+            input.value = '';
+          };
+          reader.readAsText(file);
+        })(files[i], i);
+      }
+    }
+
+    function addPolygonFileControl(fileId, fileName) {
+      const container = document.getElementById("polygonFileControls");
+      if (!container) return;
+
+      // Remove file extension from display name
+      const displayName = fileName.replace(/\.(geojson|json)$/i, '');
+
+      const row = document.createElement("div");
+      row.style.display = "flex";
+      row.style.alignItems = "center";
+      row.style.marginBottom = "6px";
+      row.style.gap = "6px";
+      row.dataset.fileId = fileId;
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = true;
+
+      const label = document.createElement("span");
+      label.textContent = displayName;
+      label.style.flex = "1";
+      label.style.fontSize = "13px";
+      label.style.overflow = "hidden";
+      label.style.textOverflow = "ellipsis";
+      label.style.whiteSpace = "nowrap";
+      label.title = fileName; // Show full name on hover
+
+      const zoomBtn = document.createElement("button");
+      zoomBtn.type = "button";
+      zoomBtn.className = "flex items-center gap-1 px-2 py-1 text-xs rounded-full border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-600";
+      zoomBtn.title = "Zoom to layer";
+      zoomBtn.innerHTML = `
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+        </svg>
+        Zoom
+      `;
+
+      const unloadBtn = document.createElement("button");
+      unloadBtn.type = "button";
+      unloadBtn.className = "flex items-center gap-1 px-2 py-1 text-xs rounded-full border border-red-300 bg-white hover:bg-red-50 text-red-500";
+      unloadBtn.title = "Unload layer";
+      unloadBtn.innerHTML = `
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+        </svg>
+        Unload
+      `;
+
+      checkbox.addEventListener("change", function() {
+        const info = polygonFileLayers[fileId];
+        if (!info) return;
+        info.polygons.forEach(p => {
+          p.setMap(checkbox.checked ? map : null);
+          if (p._centerMarker) {
+            p._centerMarker.setMap(showCenterPoints && checkbox.checked ? map : null);
+          }
+        });
+      });
+
+      zoomBtn.addEventListener("click", function() {
+        const info = polygonFileLayers[fileId];
+        if (!info || !info.bounds) return;
+        try { map.fitBounds(info.bounds); } catch(_) {}
+      });
+
+      unloadBtn.addEventListener("click", function() {
+        const info = polygonFileLayers[fileId];
+        if (info) {
+          info.polygons.forEach(p => {
+            removeCenterMarker(p);
+            p.setMap(null);
+            // remove from global polygons array
+            polygons = polygons.filter(globalP => globalP !== p);
+          });
+          delete polygonFileLayers[fileId];
+        }
+        if (row.parentNode) row.parentNode.removeChild(row);
+      });
+
+      row.appendChild(checkbox);
+      row.appendChild(label);
+      row.appendChild(zoomBtn);
+      row.appendChild(unloadBtn);
+      container.appendChild(row);
+    }
+
+    /* -----------------------------------
+       Single-file draw helpers (keeps existing polygons)
+    ----------------------------------- */
+    function drawPolygons(geojson) {
+      // Clear existing polygons and file controls (single-file load intent replaced by multi-file approach)
+      polygons.forEach(p => { removeCenterMarker(p); p.setMap(null); });
+      polygons = [];
+      // remove file-layer registry and UI
+      Object.keys(polygonFileLayers).forEach(k => delete polygonFileLayers[k]);
+      const controls = document.getElementById("polygonFileControls");
+      if (controls) controls.innerHTML = "";
+
+      // Create polygons from geojson and treat it as a single new layer
+      const newPolygons = createPolygonsFromGeoJSON(geojson);
+      if (!newPolygons.length) {
+        alert("No polygon features found.");
+        return;
+      }
+
+      const bounds = new google.maps.LatLngBounds();
+      newPolygons.forEach(p => {
+        polygons.push(p);
+        p.getPath().getArray().forEach(pt => bounds.extend(pt));
+      });
+
+      const fileLayerId = "file_" + (nextFileLayerId++);
+      polygonFileLayers[fileLayerId] = { polygons: newPolygons, bounds, fileName: "Loaded GeoJSON (single)" };
+      addPolygonFileControl(fileLayerId, "Loaded GeoJSON (single)");
+      try { map.fitBounds(bounds); } catch(_) {}
+    }
+
+    function drawPoints(geojson) {
+      points.forEach(p => p.setMap(null));
+      points = [];
+
+      geojson.features.forEach((feature) => {
+        if (!feature.geometry) return;
+        if (feature.geometry.type !== "Point") return;
+        const [lng, lat] = feature.geometry.coordinates;
+        const marker = new google.maps.Marker({
+          position: { lat, lng },
+          map,
+          draggable: editingPoints,
+          icon: getMarkerIcon("original")
+        });
+
+        marker.meta = { id: points.length + 1, original: { lat, lng }, moved: false };
+        marker.addListener("dragend", () => { marker.meta.moved = true; marker.setIcon(getMarkerIcon("moved")); });
+        attachPointTooltip(marker);
+        points.push(marker);
+      });
+    }
+
+    /* -----------------------------------
+       Marker icon logic
+    ----------------------------------- */
+    function getMarkerIcon(type) {
+      switch (type) {
+        case "moved":
+          return { path: "M -1 -1 L 1 -1 L 1 1 L -1 1 Z", scale: 6, fillColor: "#1e3a8a", fillOpacity: 1, strokeColor: "white", strokeWeight: 1 };
+        case "outside":
+          return { path: "M 0,-1 L 1,0 L 0,1 L -1,0 Z", scale: 6, fillColor: "#f97316", fillOpacity: 1, strokeColor: "white", strokeWeight: 1 };
+        default:
+          return { path: google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: "#10b981", fillOpacity: 1, strokeColor: "white", strokeWeight: 1 };
+      }
+    }
+
+    /* -----------------------------------
+       Add pin from search result
+    ----------------------------------- */
+    function addPinAsPoint() {
+      if (!searchMarker) { alert("No search pin to add. Perform a search first."); return; }
+      const loc = searchMarker.getPosition();
+      const marker = new google.maps.Marker({
+        position: loc,
+        map,
+        draggable: editingPoints,
+        icon: getMarkerIcon("original")
+      });
+
+      marker.meta = { id: points.length + 1, original: { lat: loc.lat(), lng: loc.lng() }, moved: false };
+      marker.addListener("dragend", () => { marker.meta.moved = true; marker.setIcon(getMarkerIcon("moved")); });
+      attachPointTooltip(marker);
+      points.push(marker);
+    }
+
+    /* -----------------------------------
+       Editing toggles
+    ----------------------------------- */
+    function togglePolygonEditing() {
+      editingPolygons = !editingPolygons;
+      suppressAreaTooltip = editingPolygons;
+      polygons.forEach(p => p.setEditable(editingPolygons));
+      const ind = document.getElementById("editPolygonsIndicator");
+      ind.textContent = editingPolygons ? "ON" : "OFF";
+      ind.classList.toggle("text-emerald-600", editingPolygons);
+      ind.classList.toggle("text-slate-500", !editingPolygons);
+
+      // Toggle editing class on map to prevent native context menu
+      const mapDiv = document.getElementById("map");
+      if (editingPolygons) {
+        mapDiv.classList.add("editing-polygons");
+      } else {
+        mapDiv.classList.remove("editing-polygons");
+      }
+
+      // Turn off move mode if edit mode is enabled
+      if (editingPolygons && movingPolygons) {
+        togglePolygonMoving();
+      }
+
+      if (!editingPolygons) {
+        polygons.forEach(p => { p.meta.areaSqFt = calculatePolygonArea(p); calculateAndShowCenter(p); });
+      }
+    }
+
+    function togglePointEditing() {
+      editingPoints = !editingPoints;
+      points.forEach(pt => pt.setDraggable(editingPoints));
+      const ind = document.getElementById("editPointsIndicator");
+      ind.textContent = editingPoints ? "ON" : "OFF";
+      ind.classList.toggle("text-emerald-600", editingPoints);
+      ind.classList.toggle("text-slate-500", !editingPoints);
+    }
+
+    function togglePolygonMoving() {
+      movingPolygons = !movingPolygons;
+      suppressAreaTooltip = movingPolygons;
+      
+      const ind = document.getElementById("movePolygonsIndicator");
+      ind.textContent = movingPolygons ? "ON" : "OFF";
+      ind.classList.toggle("text-emerald-600", movingPolygons);
+      ind.classList.toggle("text-slate-500", !movingPolygons);
+
+      // Update cursor style for all polygons
+      polygons.forEach(p => {
+        p.set('cursor', movingPolygons ? 'move' : 'pointer');
+      });
+
+      // Turn off edit mode if move mode is enabled
+      if (movingPolygons && editingPolygons) {
+        togglePolygonEditing();
+      }
+
+      if (!movingPolygons) {
+        // Clear any active dragging state when turning off move mode
+        if (draggedPolygon) {
+          draggedPolygon = null;
+          dragStartLatLng = null;
+          dragOriginalPath = null;
+          map.setOptions({ draggable: true }); // Re-enable map panning
+        }
+        // Update area and centers when exiting move mode
+        polygons.forEach(p => { p.meta.areaSqFt = calculatePolygonArea(p); calculateAndShowCenter(p); });
+      }
+    }
+
+    function attachPolygonDragListeners(polygon) {
+      // Mouse down - start drag
+      google.maps.event.addListener(polygon, 'mousedown', (e) => {
+        if (!movingPolygons) return;
+        draggedPolygon = polygon;
+        dragStartLatLng = e.latLng;
+        // Store the original path for smooth dragging
+        dragOriginalPath = polygon.getPath().getArray().map(pt => ({ lat: pt.lat(), lng: pt.lng() }));
+        map.setOptions({ draggable: false }); // Disable map panning while dragging polygon
+        
+        // Close any open info windows
+        if (polygon._areaInfoWindow) polygon._areaInfoWindow.close();
+      });
+    }
+
+    function attachPolygonVertexDeleteListener(polygon) {
+      // Right-click on polygon vertex to delete it in edit mode
+      // We need to listen on both the polygon itself and its path to catch all vertex interactions
+      
+      const deleteVertex = (e) => {
+        if (!editingPolygons) return;
+        
+        // Check if clicking on a vertex - handle both null check and 0 index
+        const vertexIndex = e.vertex;
+        if (vertexIndex === null || vertexIndex === undefined) return;
+        
+        const path = polygon.getPath();
+        
+        // Don't allow deletion if polygon would have less than 3 vertices
+        if (path.getLength() <= 3) {
+          alert("Cannot delete vertex. Polygon must have at least 3 vertices.");
+          return;
+        }
+        
+        // Prevent the default context menu and event propagation
+        if (e.stop) e.stop();
+        if (e.preventDefault) e.preventDefault();
+        if (e.domEvent) {
+          e.domEvent.preventDefault();
+          e.domEvent.stopPropagation();
+        }
+        
+        // Delete the vertex
+        path.removeAt(vertexIndex);
+        
+        // Update polygon metadata
+        polygon.meta.areaSqFt = calculatePolygonArea(polygon);
+        calculateAndShowCenter(polygon);
+      };
+      
+      // Attach to polygon rightclick
+      google.maps.event.addListener(polygon, 'rightclick', deleteVertex);
+      
+      // Also attach to path rightclick to catch newly added vertices
+      const path = polygon.getPath();
+      google.maps.event.addListener(path, 'rightclick', deleteVertex);
+      
+      // Monitor path changes to ensure new vertices can also be deleted
+      google.maps.event.addListener(path, 'insert_at', function() {
+        // Path was modified - vertex was added
+        // The listeners should already handle it, but we ensure metadata is updated
+      });
+      
+      google.maps.event.addListener(path, 'set_at', function() {
+        // Vertex was moved
+        if (editingPolygons) {
+          polygon.meta.areaSqFt = calculatePolygonArea(polygon);
+          calculateAndShowCenter(polygon);
+        }
+      });
+    }
+
+    function setupPolygonDragOnMap() {
+      // Mouse move - drag polygon
+      google.maps.event.addListener(map, 'mousemove', (e) => {
+        if (!movingPolygons || !draggedPolygon || !dragStartLatLng || !dragOriginalPath) return;
+        
+        // Calculate total offset from the original drag start position
+        const latDiff = e.latLng.lat() - dragStartLatLng.lat();
+        const lngDiff = e.latLng.lng() - dragStartLatLng.lng();
+        
+        // Apply offset to original path for smooth movement
+        const newPath = dragOriginalPath.map(pt => 
+          new google.maps.LatLng(pt.lat + latDiff, pt.lng + lngDiff)
+        );
+        
+        draggedPolygon.setPath(newPath);
+        
+        // Update center marker position during drag
+        if (draggedPolygon._centerMarker && draggedPolygon.meta.centerLat && draggedPolygon.meta.centerLng) {
+          draggedPolygon._centerMarker.setPosition({
+            lat: draggedPolygon.meta.centerLat + latDiff,
+            lng: draggedPolygon.meta.centerLng + lngDiff
+          });
+        }
+      });
+
+      // Mouse up - end drag
+      google.maps.event.addListener(map, 'mouseup', () => {
+        if (draggedPolygon) {
+          // Update polygon metadata
+          draggedPolygon.meta.areaSqFt = calculatePolygonArea(draggedPolygon);
+          calculateAndShowCenter(draggedPolygon);
+          
+          draggedPolygon = null;
+          dragStartLatLng = null;
+          dragOriginalPath = null;
+          map.setOptions({ draggable: true }); // Re-enable map panning
+        }
+      });
+    }
+
+    /* -----------------------------------
+       PROCESSING
+    ----------------------------------- */
+    function processData() {
+      const processBtn = document.getElementById("processBtn");
+      processBtn.disabled = true;
+      processBtn.classList.remove("bg-indigo-600");
+      processBtn.classList.add("bg-amber-500");
+      processBtn.textContent = "Processing…";
+      document.getElementById("status").textContent = "Processing…";
+
+      const resultsList = document.getElementById("resultsList");
+      resultsList.innerHTML = "";
+
+      try {
+        if (polygons.length === 0 || points.length === 0) {
+          resultsList.innerHTML = `<div class='text-xs text-slate-500 p-2'>Need polygons AND points before processing.</div>`;
+          document.getElementById("resultsWindow").style.display = "block";
+          return;
+        }
+
+        polygons.forEach(p => p.setOptions({ fillColor: "#3b82f6" }));
+        points.forEach(marker => { if (!marker.meta.moved) marker.setIcon(getMarkerIcon("original")); });
+
+        const results = polygons.map(p => ({ id: p.meta.id, points: [] }));
+        const unassigned = [];
+
+        points.forEach(marker => {
+          const pos = marker.getPosition();
+          const pt = turf.point([pos.lng(), pos.lat()]);
+          let inside = false;
+
+          polygons.forEach(polygon => {
+            const path = polygon.getPath().getArray();
+            let coords = path.map(c => [c.lng(), c.lat()]);
+            coords.push([coords[0][0], coords[0][1]]);
+            const turfPoly = turf.polygon([coords]);
+            if (turf.booleanPointInPolygon(pt, turfPoly)) {
+              inside = true;
+              const target = results.find(r => r.id === polygon.meta.id);
+              if (target) target.points.push(marker.meta.id);
+            }
+          });
+
+          if (!inside) {
+            marker.setIcon(getMarkerIcon("outside"));
+            unassigned.push(marker.meta.id);
+          }
+        });
+
+        results.forEach(entry => {
+          const poly = polygons.find(p => p.meta.id === entry.id);
+          const area = poly?.meta?.areaSqFt || 0;
+
+          const row = document.createElement("div");
+          row.className = "p-2 rounded border hover:bg-slate-50 cursor-pointer";
+
+          const count = entry.points.length;
+          const insideTxt = count > 0 ? `<span class='text-emerald-600 font-medium'>${count} inside: ${entry.points.join(", ")}</span>` : `<span class='text-slate-400'>No points inside</span>`;
+
+          row.innerHTML = `
+            <div class='flex justify-between'>
+              <div class='font-medium text-sm'>Polygon ${entry.id}</div>
+              <div class='text-xs'>${insideTxt}</div>
+            </div>
+            <div class='text-xs text-indigo-600'>Center: ${poly?.meta?.centerLat?.toFixed(6) ?? 'N/A'}, ${poly?.meta?.centerLng?.toFixed(6) ?? 'N/A'}</div>
+            <div class='text-xs text-slate-600'>Area: ${area.toLocaleString()} sqft</div>
+          `;
+
+          row.onclick = () => {
+            if (!poly) return;
+            const bounds = new google.maps.LatLngBounds();
+            poly.getPath().getArray().forEach(pt => bounds.extend(pt));
+            try { map.fitBounds(bounds); } catch(_) {}
+          };
+
+          resultsList.appendChild(row);
+        });
+
+        const unRow = document.createElement("div");
+        unRow.className = "mt-2 p-2 text-xs text-slate-600 border rounded";
+        unRow.innerHTML = `<strong>Points not in polygons:</strong> ${unassigned.length ? `<span class='text-orange-600'>${unassigned.join(", ")}</span>` : `<span class='text-emerald-700'>None</span>`}`;
+        resultsList.appendChild(unRow);
+
+        document.getElementById("resultsWindow").style.display = "block";
+        document.getElementById("status").textContent = `Processing done: ${points.length - unassigned.length}/${points.length} inside`;
+      } finally {
+        processBtn.disabled = false;
+        processBtn.classList.remove("bg-amber-500");
+        processBtn.classList.add("bg-indigo-600");
+        processBtn.textContent = "Process Matches";
+      }
+    }
+
+    /* -----------------------------------
+       Results window toggle
+    ----------------------------------- */
+    function toggleResultsWindow() {
+      const rw = document.getElementById("resultsWindow");
+      const btn = document.getElementById("toggleResultsBtn");
+      if (rw.style.display === "none" || rw.style.display === "") { rw.style.display = "block"; btn.textContent = "Hide"; }
+      else { rw.style.display = "none"; btn.textContent = "Show"; }
+    }
+
+    /* -----------------------------------
+       Button Click Feedback Utility
+    ----------------------------------- */
+    function buttonClickFeedback(btn, originalText) {
+      const origBg = btn.classList.contains("bg-indigo-600") ? "bg-indigo-600" : null;
+      btn.classList.add("bg-emerald-500");
+      if (origBg) btn.classList.remove(origBg);
+      btn.textContent = "Done ✓";
+      setTimeout(() => {
+        btn.classList.remove("bg-emerald-500");
+        if (origBg) btn.classList.add(origBg);
+        btn.textContent = originalText;
+      }, 800);
+    }
+
+    /* -----------------------------------
+       Export Functions
+    ----------------------------------- */
+    function exportPolygonCSV() {
+      if (polygons.length === 0) { alert("No polygons to export."); return; }
+      let csv = "Polygon ID,Center Lat,Center Lng,Area SqFt,Point IDs,GeoJSON\n";
+      polygons.forEach(p => {
+        const path = p.getPath().getArray().map(c => [c.lng(), c.lat()]);
+        path.push([path[0][0], path[0][1]]);
+        const gj = JSON.stringify({ type: "Polygon", coordinates: [path] });
+        const ptsInside = points.filter(marker => {
+          const pos = marker.getPosition();
+          const pt = turf.point([pos.lng(), pos.lat()]);
+          const turfPoly = turf.polygon([path]);
+          return turf.booleanPointInPolygon(pt, turfPoly);
+        }).map(m => m.meta.id);
+        csv += `${p.meta.id},${p.meta.centerLat},${p.meta.centerLng},${p.meta.areaSqFt},"${ptsInside.join(",")}","${gj.replace(/"/g, '""')}"\n`;
+      });
+      downloadCSV(csv, "polygons.csv");
+    }
+
+    function exportPointCSV() {
+      let csv = "Point ID,Lat,Lng,Moved\n";
+      points.forEach(m => {
+        const pos = m.getPosition();
+        csv += `${m.meta.id},${pos.lat()},${pos.lng()},${m.meta.moved}\n`;
+      });
+      downloadCSV(csv, "points.csv");
+    }
+
+    function exportPolygonWKTCSV() {
+      let csv = "Polygon ID,Center Lat,Center Lng,Area SqFt,WKT\n";
+      polygons.forEach(p => {
+        const path = p.getPath().getArray();
+        const coords = path.map(c => `${c.lng()} ${c.lat()}`);
+        coords.push(`${path[0].lng()} ${path[0].lat()}`);
+        const wkt = `POLYGON((` + coords.join(", ") + `))`;
+        csv += `${p.meta.id},${p.meta.centerLat},${p.meta.centerLng},${p.meta.areaSqFt},"${wkt}"\n`;
+      });
+      downloadCSV(csv, "polygons-wkt.csv");
+    }
+
+    function exportPolygonGeoJSON() {
+      const gj = {
+        type: "FeatureCollection",
+        features: polygons.map(p => {
+          const path = p.getPath().getArray().map(c => [c.lng(), c.lat()]);
+          path.push([path[0][0], path[0][1]]);
+          return {
+            type: "Feature",
+            geometry: { type: "Polygon", coordinates: [path] },
+            properties: { id: p.meta.id, center_lat: p.meta.centerLat, center_lng: p.meta.centerLng, area_sqft: p.meta.areaSqFt }
+          };
+        })
+      };
+      const blob = new Blob([JSON.stringify(gj, null, 2)], { type: "application/geo+json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "polygons.geojson";
+      a.click();
+    }
+
+    function downloadCSV(content, filename) {
+      const blob = new Blob([content], { type: "text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+    }
+
+    /* -----------------------------------
+       Search
+    ----------------------------------- */
+    function searchLocation() {
+      const q = document.getElementById("searchBox").value.trim();
+      const out = document.getElementById("foundAddress");
+      if (!q) return;
+      geocoder.geocode({ address: q }, (results, status) => {
+        if (status === "OK" && results[0]) {
+          const loc = results[0].geometry.location;
+          map.setCenter(loc);
+          map.setZoom(15);
+          if (searchMarker) searchMarker.setMap(null);
+          searchMarker = new google.maps.Marker({ position: loc, map, icon: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png" });
+          
+          // Add click listener to convert pin to point
+          searchMarker.addListener("click", function() {
+            const markerLoc = searchMarker.getPosition();
+            const marker = new google.maps.Marker({
+              position: markerLoc,
+              map,
+              draggable: editingPoints,
+              icon: getMarkerIcon("original")
+            });
+            
+            marker.meta = { id: points.length + 1, original: { lat: markerLoc.lat(), lng: markerLoc.lng() }, moved: false };
+            marker.addListener("dragend", () => { marker.meta.moved = true; marker.setIcon(getMarkerIcon("moved")); });
+            attachPointTooltip(marker);
+            points.push(marker);
+            
+            // Remove the search marker after converting
+            searchMarker.setMap(null);
+            searchMarker = null;
+            out.textContent = "";
+          });
+          
+          out.textContent = results[0].formatted_address;
+        } else {
+          out.textContent = "Address not found";
+        }
+      });
+    }
+
+    /* -----------------------------------
+       Polygon Simplification
+    ----------------------------------- */
+    let selectedAlgorithm = 'rdp'; // 'rdp' or 'vw'
+
+    // Visvalingam-Whyatt implementation
+    function visvalingamWhyatt(coords, tolerance) {
+      if (coords.length <= 3) return coords;
+      
+      // Work with a copy
+      let points = coords.map((c, i) => ({ 
+        lng: c[0], 
+        lat: c[1], 
+        index: i,
+        area: null,
+        removed: false 
+      }));
+      
+      // Calculate triangle area using cross product
+      function triangleArea(p1, p2, p3) {
+        if (!p1 || !p2 || !p3) return Infinity;
+        return Math.abs(
+          (p1.lng * (p2.lat - p3.lat) + p2.lng * (p3.lat - p1.lat) + p3.lng * (p1.lat - p2.lat)) / 2
+        );
+      }
+      
+      // Get previous non-removed point
+      function getPrev(idx) {
+        for (let i = idx - 1; i >= 0; i--) {
+          if (!points[i].removed) return points[i];
+        }
+        return null;
+      }
+      
+      // Get next non-removed point
+      function getNext(idx) {
+        for (let i = idx + 1; i < points.length; i++) {
+          if (!points[i].removed) return points[i];
+        }
+        return null;
+      }
+      
+      // Calculate initial areas
+      for (let i = 1; i < points.length - 1; i++) {
+        points[i].area = triangleArea(points[i-1], points[i], points[i+1]);
+      }
+      
+      // Convert tolerance from coordinate units to area threshold
+      const areaThreshold = tolerance * tolerance * 10000;
+      
+      // Iteratively remove smallest area points
+      let removed = 0;
+      const maxRemove = points.length - 3; // Keep at least 3 points
+      
+      while (removed < maxRemove) {
+        // Find point with minimum area
+        let minArea = Infinity;
+        let minIdx = -1;
+        
+        for (let i = 1; i < points.length - 1; i++) {
+          if (!points[i].removed && points[i].area < minArea) {
+            minArea = points[i].area;
+            minIdx = i;
+          }
+        }
+        
+        if (minIdx === -1 || minArea > areaThreshold) break;
+        
+        // Remove the point
+        points[minIdx].removed = true;
+        removed++;
+        
+        // Recalculate areas of neighboring points
+        const prev = getPrev(minIdx);
+        const next = getNext(minIdx);
+        
+        if (prev && prev.index > 0) {
+          const prevPrev = getPrev(prev.index);
+          prev.area = triangleArea(prevPrev, prev, next);
+        }
+        
+        if (next && next.index < points.length - 1) {
+          const nextNext = getNext(next.index);
+          next.area = triangleArea(prev, next, nextNext);
+        }
+      }
+      
+      // Return remaining points
+      return points.filter(p => !p.removed).map(p => [p.lng, p.lat]);
+    }
+
+    // Simplify a single polygon using selected algorithm
+    function simplifyPolygonCoords(coords, tolerance, algorithm) {
+      if (algorithm === 'vw') {
+        return visvalingamWhyatt(coords, tolerance);
+      } else {
+        // Use Turf.js Douglas-Peucker
+        const ring = [...coords];
+        if (ring[0][0] !== ring[ring.length-1][0] || ring[0][1] !== ring[ring.length-1][1]) {
+          ring.push([ring[0][0], ring[0][1]]);
+        }
+        const turfPoly = turf.polygon([ring]);
+        const simplified = turf.simplify(turfPoly, { tolerance: tolerance, highQuality: true });
+        return simplified.geometry.coordinates[0];
+      }
+    }
+
+    // Count total points in all polygons
+    function countPolygonPoints() {
+      let total = 0;
+      polygons.forEach(p => {
+        total += p.getPath().getLength();
+      });
+      return total;
+    }
+
+    // Preview simplification (returns estimated point count)
+    function previewSimplification(tolerance, algorithm) {
+      let totalAfter = 0;
+      polygons.forEach(p => {
+        const path = p.getPath().getArray();
+        const coords = path.map(c => [c.lng(), c.lat()]);
+        const simplified = simplifyPolygonCoords(coords, tolerance, algorithm);
+        totalAfter += simplified.length - 1; // -1 because closing point is duplicated
+      });
+      return totalAfter;
+    }
+
+    // Apply simplification to all polygons
+    function applySimplification(tolerance, algorithm) {
+      polygons.forEach(p => {
+        const path = p.getPath().getArray();
+        const coords = path.map(c => [c.lng(), c.lat()]);
+        const simplified = simplifyPolygonCoords(coords, tolerance, algorithm);
+        
+        // Remove closing point if duplicated
+        let finalCoords = simplified;
+        if (simplified.length > 1 && 
+            simplified[0][0] === simplified[simplified.length-1][0] && 
+            simplified[0][1] === simplified[simplified.length-1][1]) {
+          finalCoords = simplified.slice(0, -1);
+        }
+        
+        // Update polygon path
+        const newPath = finalCoords.map(c => ({ lat: c[1], lng: c[0] }));
+        p.setPath(newPath);
+        
+        // Update metadata
+        p.meta.areaSqFt = calculatePolygonArea(p);
+        calculateAndShowCenter(p);
+      });
+    }
+
+    // Convert slider value (1-100) to tolerance
+    function sliderToTolerance(sliderValue) {
+      // Exponential scale: 0.000001 to 0.001
+      const minTol = 0.000001;
+      const maxTol = 0.001;
+      const exp = sliderValue / 100;
+      return minTol * Math.pow(maxTol / minTol, exp);
+    }
+
+    // Open simplify modal
+    function openSimplifyModal() {
+      if (polygons.length === 0) {
+        alert("No polygons to simplify.");
+        return;
+      }
+      
+      const modal = document.getElementById("simplifyModal");
+      const stats = document.getElementById("simplifyStats");
+      const totalPoints = countPolygonPoints();
+      
+      stats.innerHTML = `
+        <div class="flex justify-between">
+          <span>Total polygons:</span>
+          <span class="font-medium">${polygons.length}</span>
+        </div>
+        <div class="flex justify-between">
+          <span>Total points:</span>
+          <span class="font-medium">${totalPoints.toLocaleString()}</span>
+        </div>
+      `;
+      
+      // Reset to defaults
+      selectedAlgorithm = 'rdp';
+      updateAlgorithmButtons();
+      document.getElementById("toleranceSlider").value = 25;
+      updateToleranceDisplay();
+      updatePreview();
+      
+      modal.classList.remove("hidden");
+    }
+
+    // Close simplify modal
+    function closeSimplifyModal() {
+      document.getElementById("simplifyModal").classList.add("hidden");
+    }
+
+    // Update algorithm button styles
+    function updateAlgorithmButtons() {
+      const rdpBtn = document.getElementById("algoRDP");
+      const vwBtn = document.getElementById("algoVW");
+      const desc = document.getElementById("algoDescription");
+      
+      if (selectedAlgorithm === 'rdp') {
+        rdpBtn.className = "flex-1 px-3 py-2 rounded-md border-2 border-indigo-500 bg-indigo-50 text-indigo-700 text-sm font-medium";
+        vwBtn.className = "flex-1 px-3 py-2 rounded-md border-2 border-slate-200 bg-white text-slate-600 text-sm font-medium";
+        desc.textContent = "Removes points based on perpendicular distance from line segments. Good for preserving sharp corners.";
+      } else {
+        vwBtn.className = "flex-1 px-3 py-2 rounded-md border-2 border-indigo-500 bg-indigo-50 text-indigo-700 text-sm font-medium";
+        rdpBtn.className = "flex-1 px-3 py-2 rounded-md border-2 border-slate-200 bg-white text-slate-600 text-sm font-medium";
+        desc.textContent = "Removes points forming smallest triangle areas. Produces more aesthetically pleasing results for cartography.";
+      }
+    }
+
+    // Update tolerance display
+    function updateToleranceDisplay() {
+      const slider = document.getElementById("toleranceSlider");
+      const display = document.getElementById("toleranceValue");
+      const tolerance = sliderToTolerance(parseInt(slider.value));
+      display.textContent = tolerance.toFixed(6);
+    }
+
+    // Update preview
+    function updatePreview() {
+      const slider = document.getElementById("toleranceSlider");
+      const preview = document.getElementById("simplifyPreview");
+      const tolerance = sliderToTolerance(parseInt(slider.value));
+      
+      const totalBefore = countPolygonPoints();
+      const totalAfter = previewSimplification(tolerance, selectedAlgorithm);
+      const reduction = totalBefore > 0 ? Math.round((1 - totalAfter / totalBefore) * 100) : 0;
+      
+      preview.innerHTML = `${totalAfter.toLocaleString()} points <span class="text-emerald-600">(${reduction}% reduction)</span>`;
+    }
+
+    // Initialize simplify modal event listeners
+    function initSimplifyModal() {
+      document.getElementById("simplifyPolygonsBtn").onclick = openSimplifyModal;
+      document.getElementById("simplifyModalClose").onclick = closeSimplifyModal;
+      document.getElementById("simplifyCancel").onclick = closeSimplifyModal;
+      
+      document.getElementById("algoRDP").onclick = () => {
+        selectedAlgorithm = 'rdp';
+        updateAlgorithmButtons();
+        updatePreview();
+      };
+      
+      document.getElementById("algoVW").onclick = () => {
+        selectedAlgorithm = 'vw';
+        updateAlgorithmButtons();
+        updatePreview();
+      };
+      
+      document.getElementById("toleranceSlider").oninput = () => {
+        updateToleranceDisplay();
+        updatePreview();
+      };
+      
+      document.getElementById("simplifyApply").onclick = () => {
+        const slider = document.getElementById("toleranceSlider");
+        const tolerance = sliderToTolerance(parseInt(slider.value));
+        
+        applySimplification(tolerance, selectedAlgorithm);
+        closeSimplifyModal();
+        
+        document.getElementById("status").textContent = `Simplified ${polygons.length} polygons (${countPolygonPoints()} points remaining)`;
+      };
+      
+      // Close modal on Escape
+      document.getElementById("simplifyModal").addEventListener("click", (e) => {
+        if (e.target.id === "simplifyModal") closeSimplifyModal();
+      });
+    }
+
+    // Export dropdown menu functionality
+    document.addEventListener('DOMContentLoaded', function() {
+      const exportMenuBtn = document.getElementById('exportMenuBtn');
+      const exportMenu = document.getElementById('exportMenu');
+      
+      if (exportMenuBtn && exportMenu) {
+        exportMenuBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          exportMenu.classList.toggle('hidden');
+        });
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+          if (!exportMenuBtn.contains(e.target) && !exportMenu.contains(e.target)) {
+            exportMenu.classList.add('hidden');
+          }
+        });
+        
+        // Close dropdown after selecting an option
+        exportMenu.querySelectorAll('button').forEach(btn => {
+          btn.addEventListener('click', function() {
+            exportMenu.classList.add('hidden');
+          });
+        });
+      }
+    });
+
+    window.onload = initMap;
+    /* ============= END OF JS FIX ============= */
+  </script>
+</body>
+</html>
